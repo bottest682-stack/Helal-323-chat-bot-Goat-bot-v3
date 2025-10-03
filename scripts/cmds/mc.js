@@ -1,62 +1,61 @@
-const axios = require("axios");
+const util = require("minecraft-server-util");
 
 module.exports = {
   config: {
     name: "mc",
-    version: "1.2",
+    version: "2.0",
     author: "Helal",
     countDown: 5,
     role: 0,
-    description: { en: "Check Minecraft server status (debug)" },
-    category: "Utility",
-    guide: { en: "{pn} <ip> [port]" }
-  },
-
-  langs: {
-    en: {
-      missingIP: "❌ Please provide server IP. Example: /mc play.hypixel.net",
-      checking: "⏳ Checking server...",
-      offline: "❌ Server is offline or unreachable.",
-      online: "✅ Server is online!\nPlayers: {players}/{max}\nVersion: {version}\nSoftware: {software}\nIP: {ip}:{port}",
-      error: "⚠️ Error: {err}"
+    description: "Check Minecraft server info (Java + Bedrock)",
+    category: "utility",
+    guide: {
+      en: "{pn} <ip:port>"
     }
   },
 
-  onStart: async function({ message, args, getLang }) {
-    if (!args[0]) return message.reply(getLang("missingIP"));
-    const ip = args[0];
-    const port = args[1] || 25565;
+  onStart: async function ({ message, args }) {
+    if (args.length === 0) return message.reply("⚠️ Example: /mc play.hypixel.net অথবা /mc play.example.net:19132");
 
-    await message.reply(getLang("checking"));
+    let input = args[0].split(":");
+    let host = input[0];
+    let port = input[1] ? parseInt(input[1]) : 25565;
 
+    // প্রথমে Java server চেক করবো
     try {
-      const res = await axios.get(`https://api.mcsrvstat.us/2/${ip}`);
-      const data = res.data;
-      // debug log console
-      console.log("MC API response:", JSON.stringify(data, null, 2));
+      const javaStatus = await util.status(host, port, { timeout: 5000 });
 
-      if (!data.online) {
-        return message.reply(getLang("offline"));
+      let playersList = javaStatus.players.sample 
+        ? javaStatus.players.sample.map((p, i) => `${i + 1}. ${p.name}`).slice(0, 10).join("\n") 
+        : "❌ Online players দেখানো যাচ্ছে না";
+
+      return message.reply(
+`✅ Server is ONLINE (Java Edition)
+📡 IP: ${host}:${port}
+🖥 Software: Java
+🎮 Version: ${javaStatus.version.name}
+👥 Players: ${javaStatus.players.online}/${javaStatus.players.max}
+
+👤 Online Players (Top 10):
+${playersList}`
+      );
+    } catch (err1) {
+      try {
+        // যদি Java fail করে → Bedrock ধরবে
+        const bedrockStatus = await util.statusBedrock(host, port || 19132, { timeout: 5000 });
+
+        return message.reply(
+`✅ Server is ONLINE (Bedrock Edition)
+📡 IP: ${host}:${port || 19132}
+🖥 Software: Bedrock
+🎮 Version: ${bedrockStatus.version.name}
+👥 Players: ${bedrockStatus.players.online}/${bedrockStatus.players.max}
+
+⚠️ Note: Bedrock এ player list দেখানো যায় না`
+        );
+      } catch (err2) {
+        return message.reply("❌ Server is offline or unreachable!");
       }
-
-      const playersOnline = data.players?.online || 0;
-      const playersMax = data.players?.max || 0;
-      const version = data.version || "Unknown";
-      const software = data.software || "Unknown";
-
-      let msg = getLang("online")
-        .replace("{players}", playersOnline)
-        .replace("{max}", playersMax)
-        .replace("{version}", version)
-        .replace("{software}", software)
-        .replace("{ip}", ip)
-        .replace("{port}", port);
-
-      return message.reply(msg);
-
-    } catch (err) {
-      console.error("MC status error:", err);
-      return message.reply(getLang("error").replace("{err}", err.message));
     }
   }
 };
