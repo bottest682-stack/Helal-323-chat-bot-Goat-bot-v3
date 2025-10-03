@@ -1,49 +1,77 @@
-const fs = require("fs-extra");
-const request = require("request");
+const fs = require("fs");
+const path = require("path");
 
-module.exports.config = {
- name: "helpall",
- version: "1.0.0",
- hasPermssion: 0,
- credits: "Helal",
- description: "Displays all available commands in one page",
- commandCategory: "system",
- usages: "[No args]",
- cooldowns: 5
-};
+module.exports = {
+  config: {
+    name: "help",
+    version: "3.1",
+    author: "Helal",
+    countDown: 5,
+    role: 0,
+    description: "Show stylish help menu with all commands ⚡",
+    category: "System",
+    guide: {
+      en: ".help অথবা .help <command name>"
+    }
+  },
 
-module.exports.run = async function ({ api, event }) {
- const { commands } = global.client;
- const { threadID, messageID } = event;
+  onStart: async function ({ message, args }) {
+    const commandsPath = __dirname;
+    const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
+    const prefix = "."; // তোমার prefix এখানে ফিক্সড
 
- const allCommands = [];
+    // যদি শুধু .help লেখা হয়
+    if (!args[0]) {
+      let categories = {};
 
- for (let [name] of commands) {
- if (name && name.trim() !== "") {
- allCommands.push(name.trim());
- }
- }
+      for (let file of commandFiles) {
+        try {
+          const cmd = require(path.join(commandsPath, file));
+          if (cmd.config && cmd.config.name) {
+            let cat = cmd.config.category || "Misc";
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(`⚡ ${prefix}${cmd.config.name} › ${cmd.config.description || "No description"}`);
+          }
+        } catch (e) {}
+      }
 
- allCommands.sort();
+      let msg = `┏━━━━━━━━━━━━━━┓
+🌐 𝗛𝗘𝗟𝗣 𝗠𝗘𝗡𝗨 🌐
+┗━━━━━━━━━━━━━━┛
 
- const finalText = `╔══❖💖Bot Cmd💖❖══╗
-${allCommands.map(cmd => `║ ❥➔ ${cmd}`).join("\n")}
-╠═════♡ 💝💖💝 ♡═════╣
-║ ❥ 𝙱𝙾𝚃: Digital Ai 
-║ ❥ 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂: ${allCommands.length} 
-╚═══════════════════╝`;
+💠 Prefix: ${prefix}
+📦 Total Commands: ${commandFiles.length}
 
- 
- const backgrounds = [
- "https://i.imgur.com/SAEE6uf.jpeg"
- ];
- const selectedBg = backgrounds[Math.floor(Math.random() * backgrounds.length)];
- const imgPath = __dirname + "/cache/helpallbg.jpg";
+`;
 
- const callback = () =>
- api.sendMessage({ body: finalText, attachment: fs.createReadStream(imgPath) }, threadID, () => fs.unlinkSync(imgPath), messageID);
+      for (let cat in categories) {
+        msg += `🔹 ${cat.toUpperCase()} 🔹\n${categories[cat].join("\n")}\n━━━━━━━━━━━━━━━\n`;
+      }
 
- request(encodeURI(selectedBg))
- .pipe(fs.createWriteStream(imgPath))
- .on("close", () => callback());
+      msg += `💡 Usage: ${prefix}help <command name>`;
+
+      return message.reply(msg);
+    }
+
+    // যদি .help <command> ব্যবহার করা হয়
+    let cmdName = args[0].toLowerCase();
+    const file = commandFiles.find(f => f.replace(".js", "").toLowerCase() === cmdName);
+    if (!file) return message.reply(`❌ Command '${cmdName}' পাওয়া যায়নি!`);
+
+    const cmd = require(path.join(commandsPath, file));
+    let details =
+`┏━━━━━━━━━━━━━━┓
+ 🔎 𝗖𝗢𝗠𝗠𝗔𝗡𝗗 𝗜𝗡𝗙𝗢
+┗━━━━━━━━━━━━━━┛
+
+📌 Command: ${prefix}${cmd.config.name}
+📂 Category: ${cmd.config.category || "Unknown"}
+👤 Author: ${cmd.config.author || "Unknown"}
+ℹ️ Description: ${cmd.config.description || "No description"}
+⚡ Cooldown: ${cmd.config.countDown || 0}s
+📝 Guide: ${cmd.config.guide?.en || "No guide"}
+`;
+
+    return message.reply(details);
+  }
 };
