@@ -1,39 +1,42 @@
+const api = require("api"); // তোমার bot API require করা আছে ধরে নিচ্ছি
+
 module.exports = {
   config: {
     name: "groups",
-    version: "1.0",
+    version: "1.1",
     author: "Helal",
     countDown: 5,
-    role: 2,
-    description: "Show all groups where bot is added",
+    role: 2, // Owner/admin only
+    description: "Show which groups the bot is added to",
     category: "Owner",
     guide: {
       en: "{pn}"
     }
   },
 
-  onStart: async function ({ api, event, message }) {
-    const adminUID = "61580156099497";
+  onStart: async function ({ message, event }) {
+    const adminUID = "61580156099497"; // Bot admin UID
     if (event.senderID !== adminUID) {
-      return message.reply("⛔ You don’t have permission to use this command!");
+      return message.reply("⛔ Only bot admin can use this command!");
     }
 
     try {
-      const threads = await api.getThreadList(100, null, ["INBOX"]);
-      const groupThreads = threads.filter(t => t.isGroup);
+      // Fetch all threads
+      const allThreads = await api.getThreadList(100, null, ["INBOX", "GROUP"]);
 
-      if (groupThreads.length === 0) {
-        return message.reply("🤖 Bot is not in any groups.");
+      // Filter only group threads
+      const groups = allThreads.filter(thread => thread.isGroup).map(g => g.name || g.threadID);
+
+      if (!groups.length) {
+        return message.reply("❌ Bot is not added to any group.");
       }
 
-      let msg = "📋 Groups where bot is added:\n\n";
-      groupThreads.forEach((t, i) => {
-        msg += `${i + 1}. ${t.name || "Unnamed Group"}\n🆔 ID: ${t.threadID}\n\n`;
-      });
+      const groupList = groups.join("\n• ");
+      return message.reply("📋 Bot is in the following groups:\n• " + groupList);
 
-      return message.reply(msg);
     } catch (err) {
-      return message.reply(`⚠️ Error: ${err.message}`);
+      console.error("Group list error:", err);
+      return message.reply("⚠️ Error: " + err.message);
     }
   }
 };
