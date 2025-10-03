@@ -1,52 +1,55 @@
-const mc = require("minecraft-server-util");
+const Gamedig = require("gamedig");
 
-module.exports.config = {
-    name: "mc",
-    version: "1.1.0",
-    hasPermssion: 0,
-    credits: "Helal",
-    description: "Check Minecraft server status",
-    commandCategory: "utility",
-    usages: "/mc <ip> [port]",
-    cooldowns: 5
-};
+module.exports = {
+	config: {
+		name: "mc",
+		version: "1.0",
+		author: "Helal",
+		countDown: 5,
+		role: 0,
+		description: {
+			en: "Check Minecraft server status"
+		},
+		category: "Utility",
+		guide: {
+			en: "{pn} <ip> [port]\nExample: {pn} play.hypixel.net 25565"
+		}
+	},
 
-module.exports.run = async function({ api, event, args }) {
-    if (args.length < 1) {
-        return api.sendMessage("❌ Please provide a server IP.\nUsage: /mc <ip> [port]", event.threadID, event.messageID);
-    }
+	langs: {
+		en: {
+			missingIP: "❌ | Please provide server IP.\nExample: /mc play.hypixel.net",
+			checking: "⏳ | Checking server status...",
+			offline: "❌ | Server is offline or unreachable.",
+			online: "✅ | Server is online!\n🎮 Players: {players}/{max}\n📌 Map: {map}\n⚙️ Version: {version}\n🌍 IP: {ip}:{port}"
+		}
+	},
 
-    let ip = args[0];
-    let port = args[1] ? parseInt(args[1]) : 25565; // default 25565
+	onStart: async function ({ message, args, getLang }) {
+		if (!args[0]) return message.reply(getLang("missingIP"));
+		const ip = args[0];
+		const port = args[1] || 25565;
 
-    try {
-        const result = await mc.status(ip, port, { timeout: 5000 });
+		await message.reply(getLang("checking"));
 
-        let msg = 
-`━━━━━━━━━━━━━━━━━━
-🌍 Minecraft Server Info
-━━━━━━━━━━━━━━━━━━
-📡 Host: ${ip}:${port}
-🟢 Status: Online ✅
-👥 Players: ${result.players.online}/${result.players.max}
-⚙️ Version: ${result.version.name}
-💻 Software: ${result.software || "Vanilla/Unknown"}
-📊 Ping: ${result.roundTripLatency}ms
-━━━━━━━━━━━━━━━━━━
-✨ Enjoy your blocky world! ✨`;
+		try {
+			const state = await Gamedig.query({
+				type: "minecraft",
+				host: ip,
+				port: port
+			});
 
-        return api.sendMessage(msg, event.threadID, event.messageID);
-
-    } catch (err) {
-        return api.sendMessage(
-`━━━━━━━━━━━━━━━━━━
-🌍 Minecraft Server Info
-━━━━━━━━━━━━━━━━━━
-📡 Host: ${ip}:${port}
-🔴 Status: Offline ❌
-━━━━━━━━━━━━━━━━━━`,
-            event.threadID,
-            event.messageID
-        );
-    }
+			return message.reply(
+				getLang("online")
+					.replace("{players}", state.players.length)
+					.replace("{max}", state.maxplayers)
+					.replace("{map}", state.map || "N/A")
+					.replace("{version}", state.raw.vanilla?.version || state.raw.version || "Unknown")
+					.replace("{ip}", ip)
+					.replace("{port}", port)
+			);
+		} catch (e) {
+			return message.reply(getLang("offline"));
+		}
+	}
 };
