@@ -1,4 +1,5 @@
-const axios = require("axios");
+const { lookup } = require("node:dns").promises;
+const mc = require("minecraft-server-util");
 
 module.exports = {
   config: {
@@ -7,65 +8,75 @@ module.exports = {
     author: "Helal",
     countDown: 5,
     role: 0,
-    description: {
-      en: "Check Minecraft server status with player list"
-    },
+    description: "Check Minecraft server status",
     category: "Utility",
     guide: {
-      en: "{pn} <ip> [port]"
+      en: "{pn} <ip:port>"
     }
   },
 
-  langs: {
-    en: {
-      missingIP: "❌ Please provide server IP. Example: /mc play.hypixel.net",
-      checking: "⏳ Checking server status...",
-      offline: "❌ Server is offline or unreachable.",
-      online: "✅ Server is online!\n📡 IP: {ip}:{port}\n🖥 Software: {software}\n🎮 Version: {version}\n👥 Players: {players}/{max}\n\n{playerList}",
-      error: "⚠️ Error: {err}"
-    }
-  },
+  onStart: async function ({ message, args }) {
+    if (!args[0]) return message.reply("⚠️ | Please provide server IP!\nExample: /mc play.hypixel.net:25565");
 
-  onStart: async function({ message, args, getLang }) {
-    if (!args[0]) return message.reply(getLang("missingIP"));
-    const ip = args[0];
-    const port = args[1] || 25565;
-
-    await message.reply(getLang("checking"));
+    let [host, port] = args[0].split(":");
+    port = port ? parseInt(port) : 25565;
 
     try {
-      const res = await axios.get(`https://api.mcsrvstat.us/2/${ip}`);
-      const data = res.data;
+      // Java Server check
+      const result = await mc.status(host, port, { timeout: 5000 });
+      const hosting = await detectHosting(host);
 
-      if (!data.online) {
-        return message.reply(getLang("offline"));
+      let msg = `✅ Server is **Online**!\n\n` +
+        `🌐 IP: ${host}:${port}\n` +
+        `🖥️ Software: ${result.software || "Unknown"}\n` +
+        `🎮 Version: ${result.version.name}\n` +
+        `👥 Players: ${result.players.online}/${result.players.max}\n` +
+        `📡 Hosting: ${hosting}\n\n`;
+
+      if (result.players.sample && result.players.sample.length > 0) {
+        msg += `👤 Online Players:\n${result.players.sample.map(p => `- ${p.name}`).join("\n")}`;
+      } else {
+        msg += `😔 No players online right now.`;
       }
-
-      const playersOnline = data.players?.online || 0;
-      const playersMax = data.players?.max || 0;
-      const version = data.version || "Unknown";
-      const software = data.software || "Unknown";
-
-      // Player list
-      let playerList = "🙃 No players online right now.";
-      if (data.players?.list && data.players.list.length > 0) {
-        playerList = "👥 Online Players:\n" + data.players.list.map((p, i) => `${i+1}. ${p}`).join("\n");
-      }
-
-      let msg = getLang("online")
-        .replace("{ip}", ip)
-        .replace("{port}", port)
-        .replace("{software}", software)
-        .replace("{version}", version)
-        .replace("{players}", playersOnline)
-        .replace("{max}", playersMax)
-        .replace("{playerList}", playerList);
 
       return message.reply(msg);
 
-    } catch (err) {
-      console.error("MC status error:", err);
-      return message.reply(getLang("error").replace("{err}", err.message));
+    } catch (e) {
+      // Bedrock Fallback
+      try {
+        const result = await mc.statusBedrock(host, port, { timeout: 5000 });
+        const hosting = await detectHosting(host);
+
+        let msg = `✅ Bedrock Server is **Online**!\n\n` +
+          `🌐 IP: ${host}:${port}\n` +
+          `🎮 Version: ${result.version.name} (${result.version.protocol})\n` +
+          `👥 Players: ${result.players.online}/${result.players.max}\n` +
+          `📡 Hosting: ${hosting}`;
+
+        return message.reply(msg);
+
+      } catch {
+        return message.reply("❌ | Server is offline or unreachable.");
+      }
     }
   }
 };
+
+// Detect Hosting Provider
+async function detectHosting(host) {
+  try {
+    const res = await lookup(host);
+    const ip = res.address;
+
+    if (host.includes("aternos")) return "🌍 Aternos Free Hosting";
+    if (host.includes("pebblehost")) return "💎 Pebblehost";
+    if (host.includes("shockbyte")) return "⚡ Shockbyte";
+    if (host.includes("minehut")) return "🏝️ Minehut";
+    if (ip.startsWith("51.")) return "🇫🇷 OVH Hosting";
+    if (ip.startsWith("104.") || ip.startsWith("172.")) return "☁️ Cloudflare Proxy";
+
+    return `🛰️ ${ip}`;
+  } catch {
+    return "Unknown Hosting";
+  }
+          }
